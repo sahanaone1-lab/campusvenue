@@ -9,6 +9,9 @@ const poolConfig = {
   max: parseInt(process.env.DB_POOL_MAX, 10) || 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  ssl: process.env.DB_SSL === 'true'
+    ? { rejectUnauthorized: false }
+    : false,
 };
 
 // Only attach password if provided and non-empty
@@ -44,11 +47,11 @@ const testConnection = async () => {
       timestamp: row.current_time,
     };
   } catch (error) {
-    const errorDetails = error.message || 
-      (Array.isArray(error.errors) && error.errors.length > 0 
-        ? error.errors.map((e) => e.message || e.code).join('; ') 
-        : '') || 
-      error.code || 
+    const errorDetails = error.message ||
+      (Array.isArray(error.errors) && error.errors.length > 0
+        ? error.errors.map((e) => e.message || e.code).join('; ')
+        : '') ||
+      error.code ||
       'Unknown connection error';
 
     return {
@@ -67,3 +70,4 @@ module.exports = {
   pool,
   testConnection,
 };
+
