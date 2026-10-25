@@ -10,7 +10,6 @@ import {
   Modal,
   Alert,
   Space,
-  Tag,
   Divider,
   Segmented,
 } from 'antd';
@@ -21,12 +20,10 @@ import {
   InfoCircleOutlined,
   CrownOutlined,
   TeamOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../services/useAuth';
 import { ROLES, ROLE_LABELS, ROLE_HOME_ROUTES } from '../../utils/constants';
-import { DEFAULT_MOCK_PASSWORD } from '../../data/mockUsers';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -56,41 +53,16 @@ export const LoginPage = () => {
     if (roleParam && Object.values(ROLES).includes(roleParam)) {
       form.setFieldsValue({
         role: roleParam,
-        identifier:
-          roleParam === ROLES.ADMIN
-            ? 'admin@college.edu'
-            : roleParam === ROLES.FACULTY
-            ? 'faculty@college.edu'
-            : 'student@college.edu',
-        password: DEFAULT_MOCK_PASSWORD,
       });
     } else {
       form.setFieldsValue({
         role: ROLES.STUDENT,
-        identifier: 'student@college.edu',
-        password: DEFAULT_MOCK_PASSWORD,
       });
     }
   }, [searchParams, form]);
 
-  const handleRoleChange = (selectedRole) => {
+  const handleRoleChange = () => {
     setAuthError(null);
-    if (selectedRole === ROLES.ADMIN) {
-      form.setFieldsValue({ identifier: 'admin@college.edu' });
-    } else if (selectedRole === ROLES.FACULTY) {
-      form.setFieldsValue({ identifier: 'faculty@college.edu' });
-    } else {
-      form.setFieldsValue({ identifier: 'student@college.edu' });
-    }
-  };
-
-  const handleQuickFill = (roleType, email, password = DEFAULT_MOCK_PASSWORD) => {
-    setAuthError(null);
-    form.setFieldsValue({
-      role: roleType,
-      identifier: email,
-      password: password,
-    });
   };
 
   const onFinishLogin = async (values) => {
@@ -245,57 +217,6 @@ export const LoginPage = () => {
             ]}
             style={{ marginBottom: 20 }}
           />
-
-          {/* Quick Demo Access Bar (Only in login mode) */}
-          {authMode === 'login' && (
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                padding: '12px 14px',
-                marginBottom: 20,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginBottom: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#475569',
-                }}
-              >
-                <ThunderboltOutlined style={{ color: '#d97706' }} />
-                <span>Demo Quick-Fill:</span>
-              </div>
-              <Space wrap size={[6, 6]}>
-                <Tag
-                  color="blue"
-                  style={{ cursor: 'pointer', padding: '2px 8px', fontSize: 12 }}
-                  onClick={() => handleQuickFill(ROLES.STUDENT, 'student@college.edu')}
-                >
-                  Student (student@college.edu)
-                </Tag>
-                <Tag
-                  color="cyan"
-                  style={{ cursor: 'pointer', padding: '2px 8px', fontSize: 12 }}
-                  onClick={() => handleQuickFill(ROLES.FACULTY, 'faculty@college.edu')}
-                >
-                  Faculty (faculty@college.edu)
-                </Tag>
-                <Tag
-                  color="purple"
-                  style={{ cursor: 'pointer', padding: '2px 8px', fontSize: 12 }}
-                  onClick={() => handleQuickFill(ROLES.ADMIN, 'admin@campusvenue.edu', 'AdminPass2026!')}
-                >
-                  Admin (admin@campusvenue.edu)
-                </Tag>
-              </Space>
-            </div>
-          )}
 
           {/* Error Alert */}
           {authError && (
