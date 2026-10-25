@@ -15,6 +15,11 @@ import {
   Tooltip,
   Modal,
   Descriptions,
+  Tabs,
+  Badge,
+  Input,
+  message,
+  Alert,
 } from 'antd';
 import {
   CalendarOutlined,
@@ -30,9 +35,15 @@ import {
   PieChartOutlined,
   LineChartOutlined,
   FieldTimeOutlined,
+  FileDoneOutlined,
+  SearchOutlined,
+  ExclamationCircleOutlined,
+  EditOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween.js';
+import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import {
   facultyVenueService,
@@ -40,6 +51,7 @@ import {
   parseTimeToMinutes,
 } from '../../services/facultyVenueService';
 import { venueService } from '../../services/venueService';
+import { reportService } from '../../services/reportService';
 
 dayjs.extend(isBetween);
 
@@ -74,6 +86,86 @@ export const AdminReportsPage = () => {
   // Drill-down details modal state
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+
+  // Tab & Completion Reports state (Dean review)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'completion-reports');
+  const [completionReports, setCompletionReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportStatusFilter, setReportStatusFilter] = useState('ALL');
+  const [reportSearchText, setReportSearchText] = useState('');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [deanRemarks, setDeanRemarks] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  // Load completion reports from backend API
+  const loadCompletionReports = async () => {
+    try {
+      setReportsLoading(true);
+      const res = await reportService.getAllReportsAdmin({
+        limit: 100,
+        status: reportStatusFilter !== 'ALL' ? reportStatusFilter : undefined,
+        search: reportSearchText.trim() || undefined,
+      });
+      if (res && res.reports) {
+        setCompletionReports(res.reports);
+      }
+    } catch (err) {
+      console.warn('Could not load completion reports:', err?.message || err);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCompletionReports();
+  }, [reportStatusFilter, reportSearchText]);
+
+  // Review handlers for Dean
+  const handleApproveReport = async () => {
+    if (!selectedReport) return;
+    try {
+      setReviewSubmitting(true);
+      await reportService.reviewReport(selectedReport.id, {
+        action: 'reviewed',
+        dean_remarks: deanRemarks.trim() || 'Approved by Dean.',
+      });
+      message.success(`Completion report for "${selectedReport.booking?.event_name}" approved as Reviewed.`);
+      setReviewModalVisible(false);
+      setDeanRemarks('');
+      await loadCompletionReports();
+    } catch (err) {
+      message.error(err?.message || 'Failed to approve report.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const handleRequestRevision = async () => {
+    if (!selectedReport) return;
+    if (!deanRemarks || deanRemarks.trim().length < 5) {
+      message.error('Please enter revision remarks with at least 5 characters explaining what needs revision.');
+      return;
+    }
+    try {
+      setReviewSubmitting(true);
+      await reportService.reviewReport(selectedReport.id, {
+        action: 'revision_requested',
+        dean_remarks: deanRemarks.trim(),
+      });
+      message.success(`Revision requested for "${selectedReport.booking?.event_name}". Faculty has been notified.`);
+      setReviewModalVisible(false);
+      setDeanRemarks('');
+      await loadCompletionReports();
+    } catch (err) {
+      message.error(err?.message || 'Failed to request revision.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const pendingReportsCount = completionReports.filter((r) => r.status === 'submitted').length;
 
   // Subscribe to live reactive updates from services
   useEffect(() => {
@@ -409,12 +501,242 @@ export const AdminReportsPage = () => {
     },
   ];
 
+  // Table columns for Dean Completion Reports
+  const completionReportColumns = [
+    {
+      title: 'Report ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 90,
+      render: (id) => <Text code strong>{id}</Text>,
+    },
+    {
+      title: 'Event & Department',
+      key: 'event',
+      width: 250,
+      render: (_, record) => (
+        <div>
+          <Text strong style={{ color: '#0f172a', fontSize: 14 }}>
+            {record.booking?.event_name}
+          </Text>
+          <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
+              {record.booking?.event_type || 'Academic'}
+            </Tag>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.booking?.department}
+            </Text>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Faculty Submitter',
+      key: 'faculty',
+      width: 180,
+      render: (_, record) => (
+        <div>
+          <Text strong style={{ color: '#334155' }}>
+            {record.faculty?.name}
+          </Text>
+          <div style={{ fontSize: 12, color: '#64748b' }}>
+            {record.faculty?.email}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Venue & Date',
+      key: 'venueDate',
+      width: 200,
+      render: (_, record) => (
+        <div>
+          <Space size={6}>
+            <BankOutlined style={{ color: '#1677ff' }} />
+            <Text>{record.booking?.venue_name}</Text>
+          </Space>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+            <CalendarOutlined style={{ marginRight: 4 }} />
+            {record.booking?.event_date}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Attendance (Actual / Expected)',
+      key: 'attendance',
+      width: 190,
+      render: (_, record) => {
+        const expected = record.booking?.expected_participants || 0;
+        const actual = record.actual_participants;
+        const pct = record.attendance_percentage;
+        const color = pct >= 80 ? 'green' : pct >= 50 ? 'blue' : 'orange';
+
+        return (
+          <div>
+            <div style={{ fontWeight: 600, color: '#1e293b' }}>
+              {actual} / {expected} Attendees
+            </div>
+            <div style={{ marginTop: 2 }}>
+              <Tag color={color} style={{ fontSize: 11, fontWeight: 600 }}>
+                {pct}% Attendance
+              </Tag>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Submission Date',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 130,
+      render: (d) => (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {d ? dayjs(d).format('YYYY-MM-DD') : '—'}
+        </Text>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 160,
+      render: (status) => {
+        if (status === 'reviewed') {
+          return <Tag color="success" icon={<CheckCircleOutlined />}>Reviewed</Tag>;
+        }
+        if (status === 'revision_requested') {
+          return <Tag color="warning" icon={<ExclamationCircleOutlined />}>Revision Requested</Tag>;
+        }
+        return <Tag color="processing" icon={<ClockCircleOutlined />}>Submitted</Tag>;
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 130,
+      render: (_, record) => (
+        <Button
+          type="primary"
+          size="small"
+          ghost={record.status === 'reviewed'}
+          icon={<EyeOutlined />}
+          onClick={() => {
+            setSelectedReport(record);
+            setDeanRemarks(record.dean_remarks || '');
+            setReviewModalVisible(true);
+          }}
+        >
+          {record.status === 'reviewed' ? 'View Details' : 'Review Report'}
+        </Button>
+      ),
+    },
+  ];
+
+  const completionReportsContent = (
+    <div>
+      {/* Metrics Row */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={24} sm={12} lg={6}>
+          <Card bordered style={{ borderRadius: 8, borderColor: '#e2e8f0' }}>
+            <Statistic
+              title={<span style={{ color: '#64748b', fontSize: 13 }}>Total Reports</span>}
+              value={completionReports.length}
+              prefix={<FileDoneOutlined style={{ color: '#1677ff', marginRight: 8 }} />}
+              valueStyle={{ color: '#0f172a', fontWeight: 700 }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card bordered style={{ borderRadius: 8, borderColor: '#e2e8f0' }}>
+            <Statistic
+              title={<span style={{ color: '#64748b', fontSize: 13 }}>Awaiting Dean Review</span>}
+              value={pendingReportsCount}
+              prefix={<ClockCircleOutlined style={{ color: '#faad14', marginRight: 8 }} />}
+              valueStyle={{ color: '#d97706', fontWeight: 700 }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card bordered style={{ borderRadius: 8, borderColor: '#e2e8f0' }}>
+            <Statistic
+              title={<span style={{ color: '#64748b', fontSize: 13 }}>Revisions Requested</span>}
+              value={completionReports.filter((r) => r.status === 'revision_requested').length}
+              prefix={<ExclamationCircleOutlined style={{ color: '#ea580c', marginRight: 8 }} />}
+              valueStyle={{ color: '#ea580c', fontWeight: 700 }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card bordered style={{ borderRadius: 8, borderColor: '#e2e8f0' }}>
+            <Statistic
+              title={<span style={{ color: '#64748b', fontSize: 13 }}>Approved & Reviewed</span>}
+              value={completionReports.filter((r) => r.status === 'reviewed').length}
+              prefix={<CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />}
+              valueStyle={{ color: '#16a34a', fontWeight: 700 }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Reports Table Card */}
+      <Card
+        bordered
+        style={{ borderRadius: 8, borderColor: '#e2e8f0' }}
+        title={
+          <Row gutter={[16, 12]} justify="space-between" align="middle" style={{ width: '100%' }}>
+            <Col xs={24} sm={12} md={8}>
+              <Input
+                placeholder="Search event, faculty, venue, department..."
+                prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                value={reportSearchText}
+                onChange={(e) => setReportSearchText(e.target.value)}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={10} style={{ textAlign: 'right' }}>
+              <Space>
+                <Text style={{ fontSize: 13, color: '#64748b' }}>Status:</Text>
+                <Select
+                  value={reportStatusFilter}
+                  onChange={(val) => setReportStatusFilter(val)}
+                  style={{ width: 170 }}
+                >
+                  <Option value="ALL">All Statuses</Option>
+                  <Option value="submitted">Submitted (Pending)</Option>
+                  <Option value="revision_requested">Revision Requested</Option>
+                  <Option value="reviewed">Reviewed & Approved</Option>
+                </Select>
+                <Button icon={<ReloadOutlined />} onClick={loadCompletionReports} loading={reportsLoading}>
+                  Refresh
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        }
+      >
+        <Table
+          columns={completionReportColumns}
+          dataSource={completionReports}
+          rowKey="id"
+          loading={reportsLoading}
+          scroll={{ x: 1250 }}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
+          locale={{
+            emptyText: 'No event completion reports found matching current criteria.',
+          }}
+        />
+      </Card>
+    </div>
+  );
+
   return (
     <div>
       {/* 1. Header & Breadcrumbs */}
       <PageHeader
-        title="Campus Venue Utilization & Booking Analytics"
-        subtitle="Institutional intelligence, departmental allocation metrics, and facility utilization reports"
+        title="Institutional Reports & Completion Review"
+        subtitle="Review faculty event completion reports, track actual attendance, and monitor venue utilization analytics"
         breadcrumbItems={[
           { title: 'Home', path: '/' },
           { title: 'Admin', path: '/admin/dashboard' },
@@ -429,13 +751,15 @@ export const AdminReportsPage = () => {
         }
         extra={
           <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleResetFilters}
-              disabled={activeFiltersCount === 0}
-            >
-              Reset Filters
-            </Button>
+            {activeTab === 'analytics' && (
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleResetFilters}
+                disabled={activeFiltersCount === 0}
+              >
+                Reset Filters
+              </Button>
+            )}
             <Button
               type="primary"
               icon={<DownloadOutlined />}
@@ -447,12 +771,45 @@ export const AdminReportsPage = () => {
         }
       />
 
-      {/* 2. Interactive Filter Controls Card */}
-      <Card
-        bordered
-        style={{
-          borderRadius: 10,
-          borderColor: '#e2e8f0',
+      {/* Tabs navigation between Completion Reports and Booking Analytics */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => {
+          setActiveTab(k);
+          setSearchParams({ tab: k });
+        }}
+        type="card"
+        style={{ marginBottom: 20 }}
+        items={[
+          {
+            key: 'completion-reports',
+            label: (
+              <Space size={6}>
+                <FileDoneOutlined />
+                <span>Faculty Event Completion Reports</span>
+                {pendingReportsCount > 0 && (
+                  <Badge count={pendingReportsCount} style={{ backgroundColor: '#f59e0b' }} />
+                )}
+              </Space>
+            ),
+            children: completionReportsContent,
+          },
+          {
+            key: 'analytics',
+            label: (
+              <Space size={6}>
+                <LineChartOutlined />
+                <span>Venue Utilization & Booking Analytics</span>
+              </Space>
+            ),
+            children: (
+              <div>
+                {/* 2. Interactive Filter Controls Card */}
+                <Card
+                  bordered
+                  style={{
+                    borderRadius: 10,
+                    borderColor: '#e2e8f0',
           marginBottom: 20,
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
@@ -1181,6 +1538,220 @@ export const AdminReportsPage = () => {
           size="middle"
         />
       </Card>
+              </div>
+            ),
+          },
+        ]}
+      />
+
+      {/* Dean Review Modal */}
+      <Modal
+        open={reviewModalVisible}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FileDoneOutlined style={{ color: '#1677ff', fontSize: 18 }} />
+            <span style={{ fontSize: 17, fontWeight: 600 }}>Review Event Completion Report</span>
+            {selectedReport && (
+              <Tag color={selectedReport.status === 'reviewed' ? 'success' : selectedReport.status === 'revision_requested' ? 'warning' : 'processing'}>
+                {selectedReport.status === 'reviewed' ? 'Reviewed' : selectedReport.status === 'revision_requested' ? 'Revision Requested' : 'Submitted (Awaiting Review)'}
+              </Tag>
+            )}
+          </div>
+        }
+        width={760}
+        onCancel={() => {
+          setReviewModalVisible(false);
+          setDeanRemarks('');
+        }}
+        footer={
+          selectedReport?.status === 'reviewed'
+            ? [
+                <Button key="close" type="primary" onClick={() => setReviewModalVisible(false)}>
+                  Close
+                </Button>,
+              ]
+            : [
+                <Button
+                  key="cancel"
+                  onClick={() => {
+                    setReviewModalVisible(false);
+                    setDeanRemarks('');
+                  }}
+                >
+                  Cancel
+                </Button>,
+                <Button
+                  key="revision"
+                  danger
+                  loading={reviewSubmitting}
+                  icon={<EditOutlined />}
+                  onClick={handleRequestRevision}
+                >
+                  Request Revision
+                </Button>,
+                <Button
+                  key="approve"
+                  type="primary"
+                  loading={reviewSubmitting}
+                  icon={<CheckOutlined />}
+                  onClick={handleApproveReport}
+                >
+                  Mark as Reviewed
+                </Button>,
+              ]
+        }
+      >
+        {selectedReport && (
+          <div style={{ marginTop: 8 }}>
+            {/* Header info */}
+            <Card size="small" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0', marginBottom: 16 }}>
+              <Row gutter={[16, 8]} align="middle">
+                <Col xs={24} sm={16}>
+                  <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                    {selectedReport.booking?.event_name}
+                  </Text>
+                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+                    <BankOutlined style={{ marginRight: 5, color: '#1677ff' }} />
+                    {selectedReport.booking?.venue_name} &bull; <CalendarOutlined style={{ margin: '0 5px' }} />
+                    {selectedReport.booking?.event_date} ({selectedReport.booking?.start_time} - {selectedReport.booking?.end_time})
+                  </div>
+                  <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+                    <strong>Faculty:</strong> {selectedReport.faculty?.name} ({selectedReport.faculty?.email}) &bull; {selectedReport.booking?.department}
+                  </div>
+                </Col>
+                <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
+                  <Tag color="blue" style={{ fontSize: 12, padding: '2px 8px' }}>
+                    {selectedReport.booking?.event_type || 'Academic Event'}
+                  </Tag>
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
+                    Report ID: <Text code>{selectedReport.id}</Text>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Attendance Analytics Card */}
+            <Card size="small" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', marginBottom: 16 }}>
+              <Row gutter={[16, 8]} align="middle">
+                <Col xs={8}>
+                  <Statistic
+                    title={<span style={{ fontSize: 12, color: '#166534' }}>Planned Attendance</span>}
+                    value={selectedReport.booking?.expected_participants || 0}
+                    valueStyle={{ fontSize: 18, fontWeight: 700, color: '#14532d' }}
+                    suffix="expected"
+                  />
+                </Col>
+                <Col xs={8}>
+                  <Statistic
+                    title={<span style={{ fontSize: 12, color: '#166534' }}>Actual Attendance</span>}
+                    value={selectedReport.actual_participants}
+                    valueStyle={{ fontSize: 18, fontWeight: 700, color: '#15803d' }}
+                    suffix="actual"
+                  />
+                </Col>
+                <Col xs={8}>
+                  <Statistic
+                    title={<span style={{ fontSize: 12, color: '#166534' }}>Attendance Rate</span>}
+                    value={selectedReport.attendance_percentage}
+                    valueStyle={{ fontSize: 18, fontWeight: 700, color: '#16a34a' }}
+                    suffix="%"
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Existing Review Status Banner */}
+            {selectedReport.status === 'reviewed' && (
+              <Alert
+                type="success"
+                showIcon
+                icon={<CheckCircleOutlined />}
+                message={<Text strong style={{ color: '#166534' }}>Report Reviewed & Approved</Text>}
+                description={
+                  <div style={{ color: '#14532d', marginTop: 4 }}>
+                    Reviewed by <strong>{selectedReport.reviewer?.name || 'Dean'}</strong> on{' '}
+                    {dayjs(selectedReport.reviewed_at).format('YYYY-MM-DD hh:mm A')}.
+                    {selectedReport.dean_remarks && (
+                      <div style={{ marginTop: 4 }}>
+                        <strong>Dean Remarks:</strong> {selectedReport.dean_remarks}
+                      </div>
+                    )}
+                  </div>
+                }
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+            {selectedReport.status === 'revision_requested' && (
+              <Alert
+                type="warning"
+                showIcon
+                icon={<ExclamationCircleOutlined />}
+                message={<Text strong style={{ color: '#92400e' }}>Revision Requested</Text>}
+                description={
+                  <div style={{ color: '#78350f', marginTop: 4 }}>
+                    Requested on {dayjs(selectedReport.reviewed_at).format('YYYY-MM-DD hh:mm A')}.
+                    <div style={{ marginTop: 4 }}>
+                      <strong>Current Remarks:</strong> {selectedReport.dean_remarks}
+                    </div>
+                  </div>
+                }
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+            {/* Report Content Descriptions */}
+            <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Event Summary">
+                <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#334155' }}>
+                  {selectedReport.event_summary}
+                </Paragraph>
+              </Descriptions.Item>
+              <Descriptions.Item label="Activities Conducted">
+                <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#334155' }}>
+                  {selectedReport.activities_conducted}
+                </Paragraph>
+              </Descriptions.Item>
+              {selectedReport.challenges_faced && (
+                <Descriptions.Item label="Challenges Faced">
+                  <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#334155' }}>
+                    {selectedReport.challenges_faced}
+                  </Paragraph>
+                </Descriptions.Item>
+              )}
+              {selectedReport.suggestions_for_future && (
+                <Descriptions.Item label="Suggestions for Future">
+                  <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#334155' }}>
+                    {selectedReport.suggestions_for_future}
+                  </Paragraph>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {/* Review Action Controls */}
+            {selectedReport.status !== 'reviewed' && (
+              <Card size="small" style={{ backgroundColor: '#fffbeb', borderColor: '#fef3c7' }}>
+                <div style={{ marginBottom: 6 }}>
+                  <Text strong style={{ color: '#92400e' }}>
+                    Dean Remarks / Review Feedback
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                    (Required when requesting a revision; optional for approval)
+                  </Text>
+                </div>
+                <Input.TextArea
+                  rows={3}
+                  maxLength={2000}
+                  showCount
+                  placeholder="Enter remarks for the faculty member. If requesting a revision, specify exactly what needs adjustment (minimum 5 characters)..."
+                  value={deanRemarks}
+                  onChange={(e) => setDeanRemarks(e.target.value)}
+                />
+              </Card>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* Details Modal */}
       <Modal

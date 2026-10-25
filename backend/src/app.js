@@ -5,6 +5,7 @@ const authRoutes = require('./routes/auth.routes');
 const venueRoutes = require('./routes/venue.routes');
 const bookingRoutes = require('./routes/booking.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const reportRoutes = require('./routes/report.routes');
 const notFoundHandler = require('./middleware/notFoundHandler');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -53,6 +54,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/venues', venueRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 404 Handler for undefined routes
 app.use(notFoundHandler);

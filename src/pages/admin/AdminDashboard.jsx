@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Button, Space } from 'antd';
+import { Row, Col, Card, Statistic, Table, Tag, Typography, Button, Space, Alert } from 'antd';
 import {
   BankOutlined,
   ClockCircleOutlined,
@@ -7,12 +7,14 @@ import {
   CalendarOutlined,
   ArrowRightOutlined,
   SettingOutlined,
+  FileDoneOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import { MOCK_STUDENT_EVENTS } from '../../data/mockData';
 import { venueService } from '../../services/venueService';
 import { facultyVenueService } from '../../services/facultyVenueService';
+import { reportService } from '../../services/reportService';
 
 const { Text } = Typography;
 
@@ -40,6 +42,16 @@ export const AdminDashboard = () => {
       unsubVenues();
       unsubRequests();
     };
+  }, []);
+
+  const [pendingReportsCount, setPendingReportsCount] = useState(0);
+
+  useEffect(() => {
+    reportService.getAllReportsAdmin({ limit: 50 }).then((res) => {
+      if (res && res.reports) {
+        setPendingReportsCount(res.reports.filter((r) => r.status === 'submitted').length);
+      }
+    }).catch(() => {});
   }, []);
 
   const totalVenuesCount = venues.length;
@@ -160,6 +172,15 @@ export const AdminDashboard = () => {
         extra={
           <Space>
             <Button
+              icon={<FileDoneOutlined />}
+              onClick={() => navigate('/admin/reports?tab=completion-reports')}
+            >
+              Completion Reports
+              {pendingReportsCount > 0 && (
+                <Tag color="gold" style={{ marginLeft: 6 }}>{pendingReportsCount}</Tag>
+              )}
+            </Button>
+            <Button
               type="primary"
               icon={<SettingOutlined />}
               onClick={() => navigate('/admin/venues')}
@@ -228,6 +249,30 @@ export const AdminDashboard = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Alert banner if reports await Dean review */}
+      {pendingReportsCount > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<ClockCircleOutlined />}
+          message={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 8 }}>
+              <span>
+                <strong>{pendingReportsCount} Faculty Event Completion Report{pendingReportsCount > 1 ? 's' : ''}</strong> awaiting Dean review and approval.
+              </span>
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => navigate('/admin/reports?tab=completion-reports')}
+              >
+                Review Completion Reports
+              </Button>
+            </div>
+          }
+          style={{ marginTop: 16, borderRadius: 8 }}
+        />
+      )}
 
       {/* Booking Requests Table */}
       <div style={{ marginTop: 24 }}>
