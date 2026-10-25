@@ -64,22 +64,36 @@ export const CampusCalendarPage = () => {
     role === ROLES.FACULTY ? 'MY_BOOKINGS' : 'AVAILABILITY'
   );
 
-  // Calendar Date State (defaults to October 2026 where rich bookings exist)
-  const [calendarDate, setCalendarDate] = useState(() => dayjs('2026-10-01'));
+  // Calendar Date State (defaults to current date)
+  const [calendarDate, setCalendarDate] = useState(() => dayjs());
   // Selected date for day agenda view
-  const [selectedDate, setSelectedDate] = useState(() => dayjs('2026-10-01'));
+  const [selectedDate, setSelectedDate] = useState(() => dayjs());
 
   // Booking Details Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  // Subscribe to live updates across faculty requests and venue updates
+  // Fetch real data on mount and subscribe to live updates
   useEffect(() => {
+    let mounted = true;
+    facultyVenueService.fetchRequests().then(() => {
+      if (mounted) setAllBookings(calendarService.getAllBookings());
+    }).catch(() => {});
+
+    venueService.fetchVenues().then(() => {
+      if (mounted) setVenuesList(calendarService.getVenuesList());
+    }).catch(() => {});
+
     const unsubscribe = calendarService.subscribe((updated) => {
-      setAllBookings(updated);
-      setVenuesList(calendarService.getVenuesList());
+      if (mounted) {
+        setAllBookings(updated);
+        setVenuesList(calendarService.getVenuesList());
+      }
     });
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Compute filtered bookings according to user role and active filters
