@@ -40,7 +40,8 @@ import {
   CALENDAR_STATUS,
   STATUS_COLORS,
 } from '../../services/calendarService';
-import { DEPARTMENTS } from '../../services/facultyVenueService';
+import { facultyVenueService, DEPARTMENTS } from '../../services/facultyVenueService';
+import { venueService } from '../../services/venueService';
 import { ROLES } from '../../utils/constants';
 import './CampusCalendar.css';
 
