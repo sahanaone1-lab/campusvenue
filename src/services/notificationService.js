@@ -7,6 +7,10 @@ dayjs.extend(relativeTime);
 
 let cachedNotifications = [];
 let cachedUnreadCount = 0;
+let hasFetchedNotifications = false;
+let hasFetchedUnread = false;
+let isFetchingNotifications = false;
+let isFetchingUnread = false;
 
 const dispatchNotificationsUpdated = () => {
   if (typeof window !== 'undefined') {
@@ -95,6 +99,8 @@ export const notificationService = {
    * GET /api/notifications
    */
   fetchNotifications: async (params = {}) => {
+    if (isFetchingNotifications) return cachedNotifications;
+    isFetchingNotifications = true;
     try {
       const response = await apiClient.get('/notifications', {
         params: { limit: 50, ...params },
@@ -102,15 +108,20 @@ export const notificationService = {
       const rawList = response.data?.notifications || response.data || [];
       const normalized = rawList.map(normalizeNotification);
       cachedNotifications = normalized;
+      hasFetchedNotifications = true;
       cachedUnreadCount = response.data?.unread_count ?? normalized.filter((n) => !n.read).length;
+      hasFetchedUnread = true;
 
       dispatchNotificationsUpdated();
       return normalized;
     } catch (err) {
+      hasFetchedNotifications = true;
       if (cachedNotifications.length === 0) {
         cachedNotifications = [];
       }
       throw err;
+    } finally {
+      isFetchingNotifications = false;
     }
   },
 
@@ -119,14 +130,20 @@ export const notificationService = {
    * GET /api/notifications/unread-count
    */
   fetchUnreadCount: async () => {
+    if (isFetchingUnread) return cachedUnreadCount;
+    isFetchingUnread = true;
     try {
       const response = await apiClient.get('/notifications/unread-count');
       const count = response.data?.unread_count ?? 0;
       cachedUnreadCount = count;
+      hasFetchedUnread = true;
       dispatchNotificationsUpdated();
       return count;
     } catch {
+      hasFetchedUnread = true;
       return cachedUnreadCount;
+    } finally {
+      isFetchingUnread = false;
     }
   },
 
@@ -134,7 +151,7 @@ export const notificationService = {
    * Retrieve cached notifications for user. Kicks off fetch if cache is empty.
    */
   getUserNotifications: (user) => {
-    if (cachedNotifications.length === 0 && apiClient.getToken()) {
+    if (!hasFetchedNotifications && !isFetchingNotifications && apiClient.getToken()) {
       notificationService.fetchNotifications().catch(() => {});
     }
     return cachedNotifications;
@@ -144,10 +161,22 @@ export const notificationService = {
    * Get unread count for current user
    */
   getUnreadCount: (user) => {
-    if (cachedNotifications.length === 0 && apiClient.getToken()) {
+    if (!hasFetchedUnread && !isFetchingUnread && apiClient.getToken()) {
       notificationService.fetchUnreadCount().catch(() => {});
     }
     return cachedUnreadCount;
+  },
+
+  /**
+   * Reset local in-memory cache and fetch flags
+   */
+  resetCache: () => {
+    cachedNotifications = [];
+    cachedUnreadCount = 0;
+    hasFetchedNotifications = false;
+    hasFetchedUnread = false;
+    isFetchingNotifications = false;
+    isFetchingUnread = false;
   },
 
   /**

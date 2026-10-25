@@ -54,9 +54,14 @@ export const Header = ({ collapsed, setCollapsed, isMobile }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const update = () => {
-      setNotifications(notificationService.getUserNotifications(user));
-      setUnreadCount(notificationService.getUnreadCount(user));
+    const update = (detail) => {
+      if (detail) {
+        if (detail.notifications !== undefined) setNotifications(detail.notifications);
+        if (detail.unreadCount !== undefined) setUnreadCount(detail.unreadCount);
+      } else {
+        setNotifications(notificationService.getUserNotifications(user));
+        setUnreadCount(notificationService.getUnreadCount(user));
+      }
     };
 
     update();

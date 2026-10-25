@@ -67,7 +67,7 @@ async function request(endpoint, options = {}) {
     response = await fetch(url, config);
   } catch (networkError) {
     throw new ApiError(
-      'Unable to connect to the CampusVenue backend API server. Please ensure the server is running on port 5000.',
+      `Unable to connect to the CampusVenue backend API server (${networkError?.message || 'network connection error'}).`,
       0,
       null
     );

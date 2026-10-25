@@ -211,6 +211,8 @@ export const normalizeBooking = (b) => {
 };
 
 let cachedRequests = [];
+let hasFetchedRequests = false;
+let isFetchingRequests = false;
 
 const dispatchRequestsUpdated = () => {
   if (typeof window !== 'undefined') {
@@ -224,18 +226,24 @@ export const facultyVenueService = {
    * GET /api/bookings/my-requests
    */
   fetchFacultyRequests: async (params = {}) => {
+    if (isFetchingRequests) return cachedRequests;
+    isFetchingRequests = true;
     try {
       const response = await apiClient.get('/bookings/my-requests', { params });
       const rawList = response.data?.bookings || response.data || [];
       const normalized = rawList.map(normalizeBooking);
       cachedRequests = normalized;
+      hasFetchedRequests = true;
       dispatchRequestsUpdated();
       return normalized;
     } catch (err) {
+      hasFetchedRequests = true;
       if (cachedRequests.length === 0) {
         cachedRequests = [];
       }
       throw err;
+    } finally {
+      isFetchingRequests = false;
     }
   },
 
@@ -244,18 +252,24 @@ export const facultyVenueService = {
    * GET /api/bookings
    */
   fetchAdminRequests: async (params = {}) => {
+    if (isFetchingRequests) return cachedRequests;
+    isFetchingRequests = true;
     try {
       const response = await apiClient.get('/bookings', { params });
       const rawList = response.data?.bookings || response.data || [];
       const normalized = rawList.map(normalizeBooking);
       cachedRequests = normalized;
+      hasFetchedRequests = true;
       dispatchRequestsUpdated();
       return normalized;
     } catch (err) {
+      hasFetchedRequests = true;
       if (cachedRequests.length === 0) {
         cachedRequests = [];
       }
       throw err;
+    } finally {
+      isFetchingRequests = false;
     }
   },
 
@@ -277,7 +291,7 @@ export const facultyVenueService = {
    * Return currently cached requests. Kicks off fetch if cache is empty.
    */
   getRequests: () => {
-    if (cachedRequests.length === 0 && apiClient.getToken()) {
+    if (!hasFetchedRequests && !isFetchingRequests && apiClient.getToken()) {
       facultyVenueService.fetchRequests().catch(() => {});
     }
     return cachedRequests;

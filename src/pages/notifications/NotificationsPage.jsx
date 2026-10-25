@@ -49,8 +49,12 @@ export const NotificationsPage = () => {
   const [activeTab, setActiveTab] = useState('ALL');
 
   useEffect(() => {
-    const unsubscribe = notificationService.subscribe(() => {
-      setNotifications(notificationService.getUserNotifications(user));
+    const unsubscribe = notificationService.subscribe((detail) => {
+      if (detail?.notifications) {
+        setNotifications(detail.notifications);
+      } else {
+        setNotifications(notificationService.getUserNotifications(user));
+      }
     });
     return () => unsubscribe();
   }, [user]);

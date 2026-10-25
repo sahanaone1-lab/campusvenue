@@ -35,6 +35,8 @@ export const STANDARD_FACILITIES = [
 ];
 
 let cachedVenues = [];
+let hasFetchedVenues = false;
+let isFetchingVenues = false;
 
 const dispatchVenuesUpdated = () => {
   if (typeof window !== 'undefined') {
@@ -67,19 +69,25 @@ export const venueService = {
    * Supports query filtering by search, building, status, page, and limit.
    */
   fetchVenues: async (params = {}) => {
+    if (isFetchingVenues) return cachedVenues;
+    isFetchingVenues = true;
     try {
       const response = await apiClient.get('/venues', { params });
       const rawList = response.data?.venues || response.data || [];
       const normalized = rawList.map(normalizeVenue);
       cachedVenues = normalized;
+      hasFetchedVenues = true;
       dispatchVenuesUpdated();
       return normalized;
     } catch (err) {
+      hasFetchedVenues = true;
       // If error occurs, do not overwrite with empty array if cached data exists
       if (cachedVenues.length === 0) {
         cachedVenues = [];
       }
       throw err;
+    } finally {
+      isFetchingVenues = false;
     }
   },
 
@@ -88,7 +96,7 @@ export const venueService = {
    * If cache is empty, kicks off a background fetch.
    */
   getVenues: () => {
-    if (cachedVenues.length === 0 && apiClient.getToken()) {
+    if (!hasFetchedVenues && !isFetchingVenues && apiClient.getToken()) {
       venueService.fetchVenues().catch(() => {});
     }
     return cachedVenues;
